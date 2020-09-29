@@ -20,13 +20,13 @@ class PerxGitMetrics
       non_draft_prs.each do |perx_pr|
         if perx_pr.created_at < (date+1).to_time
           if !perx_pr.resolved? || !(perx_pr.resolved_at < (date+1).to_time)
-            open_during_last_week_count[date] ||= 0
-            open_during_last_week_count[date] += 1
+            open_during_last_week_count[date] ||= DailyPrCount.new(date)
+            open_during_last_week_count[date].increment_count
           end
         end
       end
     end
-    open_during_last_week_count
+    open_during_last_week_count.values
   end
 
   def reviewers_count
@@ -80,6 +80,21 @@ class PerxGitMetrics
 
   def resolved_prs
     non_draft_prs.filter(&:resolved?)
+  end
+
+  class DailyPrCount
+    def initialize(date)
+      @date = date
+      @count = 0
+    end
+
+    def increment_count
+      @count += 1
+    end
+
+    def to_s
+      "#{@date} -> #{@count}"
+    end
   end
 
   class Pr
