@@ -30,17 +30,6 @@ class PerxGitMetrics
   end
 
   def reviewers_count
-    reviewed_prs = {}
-
-    non_draft_prs.each do |pr|
-      pr_reviews = client.pull_request_reviews(@repo, pr.number)
-      reviewers = pr_reviews.map do |pr_review|
-        pr_review[:user][:login]
-      end.uniq
-
-      reviewed_prs[pr.number] = { count: reviewers.count, total: reviewers }
-    end
-
     @people_count = {}
     reviewed_prs.each do |pr_number, stats|
       stats[:total].each do |person|
@@ -54,6 +43,11 @@ class PerxGitMetrics
       @people_percent[person] = (value*1.0/non_draft_prs.count)*100
     end
     @people_percent
+  end
+
+  def percentage_of_prs_with_min_review_count(minimum_count)
+    prs_count_with_min_review = reviewed_resolved_prs.values.count { |pr| pr[:count] >= minimum_count }
+    (prs_count_with_min_review*1.0/reviewed_resolved_prs.count)*100
   end
 
   def average_time_to_resolve
@@ -70,6 +64,35 @@ class PerxGitMetrics
     issues = client.search_issues(search_string)
     @non_draft_prs = issues.items.map { |pr| Pr.new(pr) }
     @non_draft_prs
+  end
+
+  def reviewed_resolved_prs
+    return @reviewed_resolved_prs if @reviewed_resolved_prs
+
+    @reviewed_resolved_prs = {}
+    resolved_prs.each do |pr|
+      pr_reviews = client.pull_request_reviews(@repo, pr.number)
+      reviewers = pr_reviews.map do |pr_review|
+        pr_review[:user][:login]
+      end.uniq
+
+      @reviewed_resolved_prs[pr.number] = { count: reviewers.count, total: reviewers }
+    end
+    @reviewed_resolved_prs
+  end
+
+  def reviewed_prs
+    return @reviewed_prs if @reviewed_prs
+    @reviewed_prs = {}
+    non_draft_prs.each do |pr|
+      pr_reviews = client.pull_request_reviews(@repo, pr.number)
+      reviewers = pr_reviews.map do |pr_review|
+        pr_review[:user][:login]
+      end.uniq
+
+      @reviewed_prs[pr.number] = { count: reviewers.count, total: reviewers }
+    end
+    @reviewed_prs
   end
 
   def search_string
