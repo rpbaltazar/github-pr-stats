@@ -30,24 +30,25 @@ class PerxGitMetrics
   end
 
   def reviewers_count
-    @people_count = {}
-    reviewed_prs.each do |pr_number, stats|
-      stats[:total].each do |person|
-        @people_count[person] ||= 0
-        @people_count[person] += 1
+    people_count = {}
+
+    non_draft_prs.each do |pr|
+      pr.reviewed_by.each do |person|
+        people_count[person] ||= 0
+        people_count[person] += 1
       end
     end
 
-    @people_percent = {}
-    @people_count.each do |person, value|
-      @people_percent[person] = (value*1.0/non_draft_prs.count)*100
+    people_percent = {}
+    people_count.each do |person, value|
+      people_percent[person] = (value*1.0/non_draft_prs.count)*100
     end
-    @people_percent
+    people_percent
   end
 
   def percentage_of_prs_with_min_review_count(minimum_count)
-    prs_count_with_min_review = reviewed_resolved_prs.values.count { |pr| pr[:count] >= minimum_count }
-    (prs_count_with_min_review*1.0/reviewed_resolved_prs.count)*100
+    prs_count_with_min_review = resolved_prs.count { |pr| pr.reviewers_count >= minimum_count }
+    (prs_count_with_min_review*1.0/resolved_prs.count)*100
   end
 
   def average_time_to_resolve
@@ -62,37 +63,8 @@ class PerxGitMetrics
     return @non_draft_prs if @non_draft_prs
 
     issues = client.search_issues(search_string)
-    @non_draft_prs = issues.items.map { |pr| Pr.new(pr) }
+    @non_draft_prs = issues.items.map { |pr| Pr.new(pr, @repo, @client) }
     @non_draft_prs
-  end
-
-  def reviewed_resolved_prs
-    return @reviewed_resolved_prs if @reviewed_resolved_prs
-
-    @reviewed_resolved_prs = {}
-    resolved_prs.each do |pr|
-      pr_reviews = client.pull_request_reviews(@repo, pr.number)
-      reviewers = pr_reviews.map do |pr_review|
-        pr_review[:user][:login]
-      end.uniq
-
-      @reviewed_resolved_prs[pr.number] = { count: reviewers.count, total: reviewers }
-    end
-    @reviewed_resolved_prs
-  end
-
-  def reviewed_prs
-    return @reviewed_prs if @reviewed_prs
-    @reviewed_prs = {}
-    non_draft_prs.each do |pr|
-      pr_reviews = client.pull_request_reviews(@repo, pr.number)
-      reviewers = pr_reviews.map do |pr_review|
-        pr_review[:user][:login]
-      end.uniq
-
-      @reviewed_prs[pr.number] = { count: reviewers.count, total: reviewers }
-    end
-    @reviewed_prs
   end
 
   def search_string
@@ -121,8 +93,24 @@ class PerxGitMetrics
   end
 
   class Pr
-    def initialize(gh_pr)
+    def initialize(gh_pr, repo, client)
       @gh_obj = gh_pr
+      @repo = repo
+      @client = client
+      @reviewers_data = nil
+    end
+
+    def reviewed_by
+      return @reviewed_by if @reviewed_by
+
+      @reviewed_by = reviewers_data.map do |pr_review|
+        pr_review[:user][:login]
+      end.uniq
+      @reviewed_by
+    end
+
+    def reviewers_count
+      reviewed_by.count
     end
 
     def number
@@ -156,6 +144,13 @@ class PerxGitMetrics
     def merged_at
       @gh_obj.merged_at
     end
+
+    private
+
+    def reviewers_data
+      return @reviewers_data if @reviewers_data
+      @reviewers_data = @client.pull_request_reviews(@repo, number)
+    end
   end
 end
 
@@ -164,6 +159,7 @@ def run(repo, token, cut_off_date)
   puts perx_prs.open_prs_count
   puts perx_prs.reviewers_count
   puts perx_prs.average_time_to_resolve
+  puts perx_prs.percentage_of_prs_with_min_review_count(1)
 end
 
 if ARGV.count < 2 || ARGV.count > 3
